@@ -1,7 +1,9 @@
 #!env python
 
+import collections
 import datetime
 import requests
+import shutil
 import sys
 import time
 
@@ -143,23 +145,75 @@ TRIGGER_START = GP_COMMAND + "shutter?p=1"
 GP_SETTING = GOPRO + "setting/"
 AUTO_OFF_NEVER = GP_SETTING + "59/0"
 
-WAIT_INIT = 3
+GP_MEDIALIST = "http://10.5.5.9/gp/gpMediaList"
+GP_DOWNLOAD = "http://10.5.5.9/videos/DCIM/" # FIXME should make sense with above..
 
-def request(command):
-    print("{}: {}: {}".format(datetime.datetime.now(), command,
-                       requests.get(command)))
+WAIT_TIME = 3
+
+def wait():
+   time.sleep(WAIT_TIME)
+
+def request(url, stream=False):
+   r = None
+   while True:
+      r = requests.get(url, stream=stream)
+      if r.status_code == 200:
+         break
+   assert r.status_code == 200
+   print("{}: {}: {}".format(datetime.datetime.now(), url, r))
+   return r
+
+def getMediaTree():
+    json = request(GP_MEDIALIST).json()
+    l = json["media"]
+    ret = collections.defaultdict(list)
+    for e in l:
+        dirname = e["d"]
+        for f in e["fs"]:
+            ret[dirname].append(f["n"])
+    return ret
+
+def getDiffMediaTree(orig):
+   new = getMediaTree()
+   ret = collections.defaultdict(list)
+   for k, v in new.iteritems():
+      if k not in orig:
+         ret[k] = v
+      else:
+         for e in v:
+             if e not in orig[k]:
+                 ret[k].append(e)
+   return ret
+
+def download(url, path):
+   r = request(url, stream=True)
+   with open(path, 'wb+') as f:
+       r.raw.decode_content = True
+       shutil.copyfileobj(r.raw, f)
+
+def download_all(mediaTree):
+    for k, v in mediaTree.iteritems():
+        for e in v:
+            download(GP_DOWNLOAD + k + "/" + e, e)
 
 class Runner(Daemon):
     def run(self):
     	argv = sys.argv
 
     	request(AUTO_OFF_NEVER)
-    	time.sleep(WAIT_INIT)
+    	wait()
     	request(MODE_PHOTO)
-    	time.sleep(WAIT_INIT)
+    	wait()
+        
+        mediaTree = getMediaTree()
+        download_all(mediaTree)
 
     	while True:
     	    request(TRIGGER_START)
+            diffTree = getDiffMediaTree(mediaTree)
+            download_all(diffTree) # FIXME everything works fine but DL doesn't happen..
+            mediaTree = getMediaTree()
+
     	    time.sleep(int(argv[1])) # FIXME this is shitty obvio
 
 if __name__ == "__main__":
