@@ -187,9 +187,10 @@ def getDiffMediaTree(orig):
 
 def download(url, path):
    r = request(url, stream=True)
-   with open(path, 'wb+') as f:
+   with open("/home/pi/Pictures/" + path, 'wb', 0) as f: # FIXME path should be passed as param..
        r.raw.decode_content = True
        shutil.copyfileobj(r.raw, f)
+       f.flush()
 
 def download_all(mediaTree):
     for k, v in mediaTree.iteritems():
@@ -206,12 +207,12 @@ class Runner(Daemon):
     	wait()
         
         mediaTree = getMediaTree()
-        download_all(mediaTree)
 
     	while True:
     	    request(TRIGGER_START)
             diffTree = getDiffMediaTree(mediaTree)
-            download_all(diffTree) # FIXME everything works fine but DL doesn't happen..
+            print "diff: " + str(diffTree)
+            download_all(diffTree)
             mediaTree = getMediaTree()
 
     	    time.sleep(int(argv[1])) # FIXME this is shitty obvio
