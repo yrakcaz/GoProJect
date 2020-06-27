@@ -3,6 +3,10 @@
 Controlling a GoPro Hero 7 silver (for now) from a raspberry pi and creating cool timelapses.
 This is done using the GoPro REST API defined here: https://github.com/KonradIT/goprowifihack
 
+## Why this, and why like that?
+
+FIXME
+
 ## pi\_config/
 
 We're controlling the GoPro using a server on a raspberry pi running RPi OS.
