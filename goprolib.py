@@ -3,6 +3,9 @@ import datetime
 import requests
 import shutil
 
+import PIL.ExifTags
+import PIL.Image
+
 from enum import Enum
 
 class GP_MODEL(Enum):
@@ -122,6 +125,15 @@ class GoProController(object):
                           ret[k].append(e)
         return ret
 
+    def getDateTime(self, img):
+        img = PIL.Image.open(img)
+        exif = {
+            PIL.ExifTags.TAGS[k]: v
+            for k, v in img._getexif().items()
+            if k in PIL.ExifTags.TAGS
+        }
+        return exif["DateTime"]
+
     def download(self, dirname, filename, outpath):
         url = self.gpDownload(dirname, filename)
         r = self.request(url, stream=True)
@@ -129,6 +141,9 @@ class GoProController(object):
             r.raw.decode_content = True
             shutil.copyfileobj(r.raw, f)
             f.flush()
+        date = self.getDateTime(outpath + filename)
+        name = date.replace(' ', '').replace(':', '') + ".JPG"
+        shutil.move(outpath + filename, outpath + name)
 
     def download_all(self, mediaTree, outpath):
         for k, v in mediaTree.iteritems():

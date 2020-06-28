@@ -2,7 +2,7 @@
 
 import sys, os, time, atexit
 from signal import SIGTERM
- 
+
 class Daemon:
     """
     A generic daemon class.
@@ -61,7 +61,7 @@ class Daemon:
 
     def delpid(self):
         os.remove(self.pidfile)
- 
+
     def start(self, **kwargs):
         """
         Start the daemon
@@ -82,7 +82,7 @@ class Daemon:
         # Start the daemon
         self.daemonize()
         self.run(**kwargs)
- 
+
     def stop(self):
         """
         Stop the daemon
@@ -99,8 +99,8 @@ class Daemon:
             message = "pidfile %s does not exist. Daemon not running?\n"
             sys.stderr.write(message % self.pidfile)
             return # not an error in a restart
- 
-        # Try killing the daemon process         
+
+        # Try killing the daemon process
         try:
             while 1:
                 os.kill(pid, SIGTERM)
@@ -113,14 +113,14 @@ class Daemon:
             else:
                 print str(err)
                 sys.exit(1)
- 
+
     def restart(self, **kwargs):
         """
         Restart the daemon
         """
         self.stop()
-        self.start(kwargs)
- 
+        self.start(**kwargs)
+
     def run(self, **kwargs):
         """
         You should override this method when you subclass Daemon. It will be called after the process has been
