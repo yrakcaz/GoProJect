@@ -14,7 +14,7 @@ This folder contains the configuration for connecting to the raspberry through t
 
 ## timelapse.py
 
-Script to be run on the RPi that control the GoPro and clicks a pic every N second.
+Script to be run on the RPi that control the GoPro and clicks a pic every INTERVAL second.
 
 FIXME - Usage!!
 

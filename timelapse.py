@@ -1,235 +1,76 @@
 #!env python
 
-import collections
-import datetime
-import requests
-import shutil
+import argparse
 import sys
 import time
 
-#!/usr/bin/env python
- 
-import sys, os, time, atexit
-from signal import SIGTERM
- 
-class Daemon:
-        """
-        A generic daemon class.
-       
-        Usage: subclass the Daemon class and override the run() method
-        """
-        def __init__(self, pidfile, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
-                self.stdin = stdin
-                self.stdout = stdout
-                self.stderr = stderr
-                self.pidfile = pidfile
-       
-        def daemonize(self):
-                """
-                do the UNIX double-fork magic, see Stevens' "Advanced
-                Programming in the UNIX Environment" for details (ISBN 0201563177)
-                http://www.erlenstar.demon.co.uk/unix/faq_2.html#SEC16
-                """
-                try:
-                        pid = os.fork()
-                        if pid > 0:
-                                # exit first parent
-                                sys.exit(0)
-                except OSError, e:
-                        sys.stderr.write("fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
-                        sys.exit(1)
-       
-                # decouple from parent environment
-                os.chdir("/")
-                os.setsid()
-                os.umask(0)
-       
-                # do second fork
-                try:
-                        pid = os.fork()
-                        if pid > 0:
-                                # exit from second parent
-                                sys.exit(0)
-                except OSError, e:
-                        sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
-                        sys.exit(1)
-       
-                # redirect standard file descriptors
-                sys.stdout.flush()
-                sys.stderr.flush()
-                si = file(self.stdin, 'r')
-                so = file(self.stdout, 'a+')
-                se = file(self.stderr, 'a+', 0)
-                os.dup2(si.fileno(), sys.stdin.fileno())
-                os.dup2(so.fileno(), sys.stdout.fileno())
-                os.dup2(se.fileno(), sys.stderr.fileno())
-       
-                # write pidfile
-                atexit.register(self.delpid)
-                pid = str(os.getpid())
-                file(self.pidfile,'w+').write("%s\n" % pid)
-       
-        def delpid(self):
-                os.remove(self.pidfile)
- 
-        def start(self):
-                """
-                Start the daemon
-                """
-                # Check for a pidfile to see if the daemon already runs
-                try:
-                        pf = file(self.pidfile,'r')
-                        pid = int(pf.read().strip())
-                        pf.close()
-                except IOError:
-                        pid = None
-       
-                if pid:
-                        message = "pidfile %s already exist. Daemon already running?\n"
-                        sys.stderr.write(message % self.pidfile)
-                        sys.exit(1)
-               
-                # Start the daemon
-                self.daemonize()
-                self.run()
- 
-        def stop(self):
-                """
-                Stop the daemon
-                """
-                # Get the pid from the pidfile
-                try:
-                        pf = file(self.pidfile,'r')
-                        pid = int(pf.read().strip())
-                        pf.close()
-                except IOError:
-                        pid = None
-       
-                if not pid:
-                        message = "pidfile %s does not exist. Daemon not running?\n"
-                        sys.stderr.write(message % self.pidfile)
-                        return # not an error in a restart
- 
-                # Try killing the daemon process       
-                try:
-                        while 1:
-                                os.kill(pid, SIGTERM)
-                                time.sleep(0.1)
-                except OSError, err:
-                        err = str(err)
-                        if err.find("No such process") > 0:
-                                if os.path.exists(self.pidfile):
-                                        os.remove(self.pidfile)
-                        else:
-                                print str(err)
-                                sys.exit(1)
- 
-        def restart(self):
-                """
-                Restart the daemon
-                """
-                self.stop()
-                self.start()
- 
-        def run(self):
-                """
-                You should override this method when you subclass Daemon. It will be called after the process has been
-                daemonized by start() or restart().
-                """
-
-GOPRO = "http://10.5.5.9/gp/gpControl/"
-GP_COMMAND = GOPRO + "command/"
-MODE_PHOTO = GP_COMMAND + "mode?p=1"
-TRIGGER_START = GP_COMMAND + "shutter?p=1"
-
-GP_SETTING = GOPRO + "setting/"
-AUTO_OFF_NEVER = GP_SETTING + "59/0"
-
-GP_MEDIALIST = "http://10.5.5.9/gp/gpMediaList"
-GP_DOWNLOAD = "http://10.5.5.9/videos/DCIM/" # FIXME should make sense with above..
-
-WAIT_TIME = 3
-
-def wait():
-   time.sleep(WAIT_TIME)
-
-def request(url, stream=False):
-   r = None
-   while True:
-      r = requests.get(url, stream=stream)
-      if r.status_code == 200:
-         break
-   assert r.status_code == 200
-   print("{}: {}: {}".format(datetime.datetime.now(), url, r))
-   return r
-
-def getMediaTree():
-    json = request(GP_MEDIALIST).json()
-    l = json["media"]
-    ret = collections.defaultdict(list)
-    for e in l:
-        dirname = e["d"]
-        for f in e["fs"]:
-            ret[dirname].append(f["n"])
-    return ret
-
-def getDiffMediaTree(orig):
-   new = getMediaTree()
-   ret = collections.defaultdict(list)
-   for k, v in new.iteritems():
-      if k not in orig:
-         ret[k] = v
-      else:
-         for e in v:
-             if e not in orig[k]:
-                 ret[k].append(e)
-   return ret
-
-def download(url, path):
-   r = request(url, stream=True)
-   with open("/home/pi/Pictures/" + path, 'wb', 0) as f: # FIXME path should be passed as param..
-       r.raw.decode_content = True
-       shutil.copyfileobj(r.raw, f)
-       f.flush()
-
-def download_all(mediaTree):
-    for k, v in mediaTree.iteritems():
-        for e in v:
-            download(GP_DOWNLOAD + k + "/" + e, e)
+from daemon import Daemon
+from goprolib import GP_COMMAND, GP_MODEL, GP_SETTING, GoProController
 
 class Runner(Daemon):
-    def run(self):
-    	argv = sys.argv
+    def run(self, interval, numClicks, outpath):
+        ctrl = GoProController.getInstance(GP_MODEL.HERO7_SILVER)
 
-    	request(AUTO_OFF_NEVER)
-    	wait()
-    	request(MODE_PHOTO)
-    	wait()
-        
-        mediaTree = getMediaTree()
+        ctrl.request(ctrl.gpSetting(GP_SETTING.AUTO_OFF_NEVER))
+        ctrl.request(ctrl.gpCommand(GP_COMMAND.MODE_PHOTO))
 
-    	while True:
-    	    request(TRIGGER_START)
-            diffTree = getDiffMediaTree(mediaTree)
-            print "diff: " + str(diffTree)
-            download_all(diffTree)
-            mediaTree = getMediaTree()
+        mediaTree = ctrl.getMediaTree()
 
-    	    time.sleep(int(argv[1])) # FIXME this is shitty obvio
+        i = 0
+        while True:
+            if numClicks > -1 and i == numClicks:
+                break
+
+            ctrl.request(ctrl.gpCommand(GP_COMMAND.TRIGGER_START))
+            diffTree = ctrl.getDiffMediaTree(mediaTree)
+            ctrl.download_all(diffTree, outpath)
+            mediaTree = ctrl.getMediaTree()
+
+            time.sleep(interval)
+            i += 1
+
+def parseArgs(argv):
+    parser = argparse.ArgumentParser(
+            prog="timelapse.py",
+            description="Daemon that click pics on connected GoPro every INTERVAL seconds." )
+
+    parser.add_argument("--interval", "-i", action="store", type=int,
+                        help="interval in seconds between two clicks (default=60)" )
+    parser.add_argument("--numClicks", "-n", action="store", type=int,
+                        help="number of pics to click (default=unlimited)" )
+
+    parser.add_argument("--pidfile", "-p", action="store", type=str,
+                        help="path to pidfile (default=/tmp/timelapse.pid)")
+    parser.add_argument("--logfile", "-l", action="store", type=str,
+                        help="path to logfile (default=/home/pi/timelapse.log)")
+    parser.add_argument("--outpath", "-o", action="store", type=str,
+                        help="path to directory to download pics (default=/home/pi/Pictures)")
+
+    parser.add_argument("action", nargs="?", choices=("start", "restart", "stop"),
+                        help="start, restart or stop the daemon")
+
+    args = parser.parse_args(argv)
+
+    if args.interval or args.numClicks or args.pidfile or args.logfile or args.outpath:
+        if args.action == "stop":
+            parser.error("options allowed only when starting or restarting the daemon")
+
+    return args
 
 if __name__ == "__main__":
-        daemon = Runner('/tmp/timelapse.pid', stdout='/home/pi/timelapse.log', stderr='/home/pi/timelapse.log')
-        if len(sys.argv) == 3:
-                if 'start' == sys.argv[2]:
-                        daemon.start()
-                elif 'stop' == sys.argv[2]:
-                        daemon.stop()
-                elif 'restart' == sys.argv[2]:
-                        daemon.restart()
-                else:
-                        print "Unknown command"
-                        sys.exit(2)
-                sys.exit(0)
-        else:
-                print "usage: %s waitTime start|stop|restart" % sys.argv[0]
-                sys.exit(2)
+    args = parseArgs(sys.argv[1:])
+
+    daemon = Runner(args.pidfile or '/tmp/timelapse.pid',
+                    stdout=args.logfile or '/home/pi/timelapse.log',
+                    stderr=args.logfile or '/home/pi/timelapse.log')
+
+    if args.action == "start":
+        daemon.start(interval=args.interval or 60,
+                     numClicks=args.numClicks or -1,
+                     outpath=args.outpath or "/home/pi/Pictures/")
+    elif args.action == "restart":
+        daemon.restart(interval=args.interval or 60,
+                       numClicks=args.numClicks or -1,
+                       outpath=args.outpath or "/home/pi/Pictures/")
+    else:
+        daemon.stop()
