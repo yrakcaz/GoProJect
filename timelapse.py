@@ -1,76 +1,67 @@
 #!env python
 
 import argparse
+import datetime
+import glob
+import shutil
 import sys
-import time
 
-from daemon import Daemon
-from goprolib import GP_COMMAND, GP_MODEL, GP_SETTING, GoProController
-
-class Runner(Daemon):
-    def run(self, interval, numClicks, outpath):
-        ctrl = GoProController.getInstance(GP_MODEL.HERO7_SILVER)
-
-        ctrl.request(ctrl.gpSetting(GP_SETTING.AUTO_OFF_NEVER))
-        ctrl.request(ctrl.gpCommand(GP_COMMAND.MODE_PHOTO))
-
-        mediaTree = ctrl.getMediaTree()
-
-        i = 0
-        while True:
-            if numClicks > -1 and i == numClicks:
-                break
-
-            ctrl.request(ctrl.gpCommand(GP_COMMAND.TRIGGER_START))
-            diffTree = ctrl.getDiffMediaTree(mediaTree)
-            ctrl.download_all(diffTree, outpath)
-            mediaTree = ctrl.getMediaTree()
-
-            time.sleep(interval)
-            i += 1
+from goprolib import getDateTime
 
 def parseArgs(argv):
     parser = argparse.ArgumentParser(
             prog="timelapse.py",
-            description="Daemon that click pics on connected GoPro every INTERVAL seconds." )
+            description="Choose pics and generate timelapse")
 
-    parser.add_argument("--interval", "-i", action="store", type=int,
-                        help="interval in seconds between two clicks (default=60)" )
-    parser.add_argument("--numClicks", "-n", action="store", type=int,
-                        help="number of pics to click (default=unlimited)" )
+    parser.add_argument("--in-path", "-i", action="store", required=True, type=str,
+                        help="path to get the pics from")
+    parser.add_argument("--out-path", "-o", action="store", required=True, type=str,
+                        help="path to put the generated timelapse in")
 
-    parser.add_argument("--pidfile", "-p", action="store", type=str,
-                        help="path to pidfile (default=/tmp/timelapse.pid)")
-    parser.add_argument("--logfile", "-l", action="store", type=str,
-                        help="path to logfile (default=/home/pi/timelapse.log)")
-    parser.add_argument("--outpath", "-o", action="store", type=str,
-                        help="path to directory to download pics (default=/home/pi/Pictures)")
+    parser.add_argument("--interval", "-I", action="store", type=int,
+                        help="pick one picture every INTERVAL picture only")
+    parser.add_argument("--start", "-s", action="store", type=str,
+                        help="only chose picture where time of day is > START (HH:MM)")
+    parser.add_argument("--end", "-e", action="store", type=str,
+                        help="only chose picture where time of day is > END (HH:MM)")
 
-    parser.add_argument("action", nargs="?", choices=("start", "restart", "stop"),
-                        help="start, restart or stop the daemon")
+    return parser.parse_args(argv[1:])
 
-    args = parser.parse_args(argv)
+def pick(img, i, interval, start, end):
+    if interval is not None and i % interval != 0:
+        return False
 
-    if args.interval or args.numClicks or args.pidfile or args.logfile or args.outpath:
-        if args.action == "stop":
-            parser.error("options allowed only when starting or restarting the daemon")
+    if start is None and end is None:
+        return True
 
-    return args
+    timestr = getDateTime(img).split(' ')[1]
+    time = datetime.datetime.strptime(timestr, "%H:%M:%S")
+
+    if start is not None:
+        start = datetime.datetime.strptime(start, "%H:%M")
+        if time < start:
+            return False
+
+    if end is not None:
+        end = datetime.datetime.strptime(end, "%H:%M")
+        if time > end:
+            return False
+
+    return True
 
 if __name__ == "__main__":
-    args = parseArgs(sys.argv[1:])
+    args = parseArgs(sys.argv)
 
-    daemon = Runner(args.pidfile or '/tmp/timelapse.pid',
-                    stdout=args.logfile or '/home/pi/timelapse.log',
-                    stderr=args.logfile or '/home/pi/timelapse.log')
+    in_path = args.in_path
+    out_path = args.out_path
+    interval = args.interval
+    start = args.start
+    end = args.end
 
-    if args.action == "start":
-        daemon.start(interval=args.interval or 60,
-                     numClicks=args.numClicks or -1,
-                     outpath=args.outpath or "/home/pi/Pictures/")
-    elif args.action == "restart":
-        daemon.restart(interval=args.interval or 60,
-                       numClicks=args.numClicks or -1,
-                       outpath=args.outpath or "/home/pi/Pictures/")
-    else:
-        daemon.stop()
+    i = 0
+    for f in sorted(glob.glob(in_path + "/*")):
+        filename = f.split('/')[-1]
+        outfile = out_path + '/' + filename
+        if pick(f, i, interval, start, end):
+            shutil.copyfile(f, outfile)
+        i += 1

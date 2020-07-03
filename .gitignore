@@ -1,4 +1,5 @@
 .*.swp
 *.pyc
 img/*
+test/
 TODO.md

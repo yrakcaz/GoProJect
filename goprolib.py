@@ -8,6 +8,25 @@ import PIL.Image
 
 from enum import Enum
 
+def request(url, stream=False):
+    r = None
+    while True:
+        r = requests.get(url, stream=stream)
+        if r.status_code == 200:
+            break
+    assert r.status_code == 200
+    print("{}: {}: {}".format(datetime.datetime.now(), url, r))
+    return r
+
+def getDateTime(img):
+    img = PIL.Image.open(img)
+    exif = {
+        PIL.ExifTags.TAGS[k]: v
+        for k, v in img._getexif().items()
+        if k in PIL.ExifTags.TAGS
+    }
+    return exif["DateTime"]
+
 class GP_MODEL(Enum):
     HERO7_SILVER = 1
     # TODO add more models!
@@ -92,19 +111,9 @@ class GoProController(object):
         else:
             assert False, "Unknown GoPro model!"
 
-    def request(self, url, stream=False):
-        r = None
-        while True:
-            r = requests.get(url, stream=stream)
-            if r.status_code == 200:
-                break
-        assert r.status_code == 200
-        print("{}: {}: {}".format(datetime.datetime.now(), url, r))
-        return r
-
     def getMediaTree(self):
         url = self.gpMediaList()
-        json = self.request(url).json()
+        json = request(url).json()
         l = json["media"]
         ret = collections.defaultdict(list)
         for e in l:
@@ -125,23 +134,14 @@ class GoProController(object):
                           ret[k].append(e)
         return ret
 
-    def getDateTime(self, img):
-        img = PIL.Image.open(img)
-        exif = {
-            PIL.ExifTags.TAGS[k]: v
-            for k, v in img._getexif().items()
-            if k in PIL.ExifTags.TAGS
-        }
-        return exif["DateTime"]
-
     def download(self, dirname, filename, outpath):
         url = self.gpDownload(dirname, filename)
-        r = self.request(url, stream=True)
+        r = request(url, stream=True)
         with open(outpath + filename, 'wb', 0) as f:
             r.raw.decode_content = True
             shutil.copyfileobj(r.raw, f)
             f.flush()
-        date = self.getDateTime(outpath + filename)
+        date = getDateTime(outpath + filename)
         name = date.replace(' ', '').replace(':', '') + ".JPG"
         shutil.move(outpath + filename, outpath + name)
 

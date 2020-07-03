@@ -12,7 +12,7 @@ FIXME
 We're controlling the GoPro using a server on a raspberry pi running RPi OS.
 This folder contains the configuration for connecting to the raspberry through the wifi.
 
-## timelapse.py
+## click\_pics.py
 
 Script to be run on the RPi that control the GoPro and clicks a pic every INTERVAL second.
 
@@ -21,5 +21,11 @@ FIXME - Usage!!
 ## download\_all.py
 
 Downloads all the pics from the GoPro.
+
+FIXME - Usage!!
+
+## timelapse.py
+
+Choose the required pics and generate a timelapse out of it.
 
 FIXME - Usage!!
