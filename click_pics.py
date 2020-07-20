@@ -14,7 +14,10 @@ class Runner(Daemon):
         request(ctrl.gpSetting(GP_SETTING.AUTO_OFF_NEVER))
         request(ctrl.gpCommand(GP_COMMAND.MODE_PHOTO))
 
-        mediaTree = ctrl.getMediaTree()
+        try:
+            mediaTree = ctrl.getMediaTree()
+        except ValueError:
+            assert False, "JSON decode error on first request."
 
         i = 0
         while True:
@@ -22,9 +25,14 @@ class Runner(Daemon):
                 break
 
             request(ctrl.gpCommand(GP_COMMAND.TRIGGER_START))
-            diffTree = ctrl.getDiffMediaTree(mediaTree)
-            ctrl.download_all(diffTree, outpath)
-            mediaTree = ctrl.getMediaTree()
+
+            try:
+                diffTree = ctrl.getDiffMediaTree(mediaTree)
+                ctrl.download_all(diffTree, outpath)
+                mediaTree = ctrl.getMediaTree()
+            except ValueError:
+                print( "JSON decode error - ignore." )
+                continue
 
             time.sleep(interval)
             i += 1
