@@ -34,8 +34,10 @@ def pick(img, i, interval, start, end):
     if start is None and end is None:
         return True
 
-    timestr = getDateTime(img).split(' ')[1]
-    time = datetime.datetime.strptime(timestr, "%H:%M:%S")
+    timestr = getDateTime(img).split(' ')
+    if len(timestr) < 2:
+        return False
+    time = datetime.datetime.strptime(timestr[1], "%H:%M:%S")
 
     if start is not None:
         start = datetime.datetime.strptime(start, "%H:%M")

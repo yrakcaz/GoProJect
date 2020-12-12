@@ -12,6 +12,12 @@ FIXME
 We're controlling the GoPro using a server on a raspberry pi running RPi OS.
 This folder contains the configuration for connecting to the raspberry through the wifi.
 
+To install:
+
+```
+> pi_config/install.sh
+```
+
 ## click\_pics.py
 
 Script to be run on the RPi that control the GoPro and clicks a pic every INTERVAL second.
