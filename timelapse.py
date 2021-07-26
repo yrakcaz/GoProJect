@@ -101,7 +101,7 @@ if __name__ == "__main__":
             outfile = out_path + '/' + filename
             if pick(f, i, interval, start, end):
                 shutil.copyfile(f, outfile)
-            i += i
+            i += 1
         print("\n")
         in_path = out_path
 
